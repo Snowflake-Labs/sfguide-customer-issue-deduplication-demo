@@ -1,0 +1,17 @@
+{
+    "type": "json",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "similarity_score": {
+          "type": "number",
+          "description": "The similarity score of interactions on a scale of 0 to 1 both inclusive."
+        },
+        "similarity_explanation": {
+          "type": "string",
+          "description": "reason for the score and summary of the similarity between interactions."
+        }
+      },
+      "required" : ["similarity_score", "similarity_explanation"]
+    }
+}

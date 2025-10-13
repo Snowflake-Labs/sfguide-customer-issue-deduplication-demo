@@ -1,0 +1,43 @@
+{
+  "type": "json",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "sentiment": {
+        "type": "string",
+        "description": "The sentiment of the interaction."
+      },
+      "summary": {
+        "type": "string",
+        "description": "A summary of the interaction."
+      },
+      "contacts": {
+        "type": "array",
+        "description": "A summary of the contacts.",
+        "items": {
+          "type": "object",
+          "description": "A contact information like phone numner, name, email address, or company name",
+          "properties": {
+            "type": {
+              "type": "string",
+              "description": "the type of contact - email, phone_number, name, company_name, vehicle_registration"
+            },
+            "value": {
+              "type": "string",
+              "description": "the value of the contact"
+            }
+          },
+          "required": [
+            "type",
+            "value"
+          ]
+        }
+      }
+    },
+    "required": [
+      "sentiment",
+      "summary",
+      "contacts"
+    ]
+  }
+}

@@ -1,0 +1,8 @@
+account_id,type,value
+USER_ALPHA,email,samantha.jones@email.com
+USER_ALPHA,phone_number,0411222333
+USER_ALPHA,name,Samantha Jones
+USER_BETA,email,p.chen@webmail.com.au
+USER_BETA,vehicle_registration,XYZ789
+USER_BETA,name,Peter Chen
+USER_GAMMA,phone_number,0488777666
