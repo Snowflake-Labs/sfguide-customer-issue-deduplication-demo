@@ -19,38 +19,7 @@
 -- ============================================================================
 
 -- ============================================================================
--- STEP 1: Security Configuration
--- Run these steps in order. Steps 1.4-1.5 require manual intervention.
--- ============================================================================
-
--- 1.1 Create the Network Rule (Egress to Self - Loopback)
--- IMPORTANT: Replace <your-org>-<your-account> with your actual account identifier
--- Use the format from your Snowsight URL (e.g., sfpscogs-adamle-aws-3)
-CREATE OR REPLACE NETWORK RULE snowflake_cortex_egress_rule
-    MODE = EGRESS
-    TYPE = HOST_PORT
-    VALUE_LIST = ('<your-org>-<your-account>.snowflakecomputing.com');
-
--- 1.2 Generate Programmatic Access Token (PAT) for your CURRENT user
--- IMPORTANT: Run this command and SAVE the token_secret value from the output.
--- The token is only shown ONCE and cannot be retrieved later.
-ALTER USER CURRENT_USER() ADD PROGRAMMATIC ACCESS TOKEN cortex_vectorized_udf_pat;
-
--- 1.3 Store the Token in a Secret
--- Replace '<PASTE_YOUR_PAT_TOKEN_SECRET_HERE>' with the token_secret from step 1.2
-CREATE OR REPLACE SECRET cortex_auth_token
-    TYPE = GENERIC_STRING
-    SECRET_STRING = '<PASTE_YOUR_PAT_TOKEN_SECRET_HERE>';
-
--- 1.4 Create External Access Integration
--- Binds the network rule and secret together for use by the UDF
-CREATE OR REPLACE EXTERNAL ACCESS INTEGRATION cortex_loopback_integration
-    ALLOWED_NETWORK_RULES = (snowflake_cortex_egress_rule)
-    ALLOWED_AUTHENTICATION_SECRETS = (cortex_auth_token)
-    ENABLED = TRUE;
-
--- ============================================================================
--- STEP 2: LLM_EXTRACT_ENTITIES_BATCH - Wrapper using AI_COMPLETE_BATCH
+-- STEP 1: LLM_EXTRACT_ENTITIES_BATCH - Wrapper using AI_COMPLETE_BATCH
 -- ============================================================================
 
 CREATE OR REPLACE FUNCTION LLM_EXTRACT_ENTITIES_BATCH(raw_text VARCHAR)
