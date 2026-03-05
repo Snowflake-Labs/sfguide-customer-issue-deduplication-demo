@@ -1,4 +1,4 @@
-# CORTEXAPICOMPLETE: Cost-Optimized LLM Inference at Scale in Snowflake
+# LLMAPICOMPLETE: Cost-Optimized LLM Inference at Scale in Snowflake
 
 *How I built a vectorized UDF that unlocks Prompt Caching, Parallel Execution, and Token Visibility for Cortex LLM calls.*
 
@@ -12,18 +12,18 @@ Every row sends the same 1,100-token system prompt. That's 11 million system pro
 
 The Cortex REST API offers a feature called **Prompt Caching** that can reduce cached token costs by up to 90%. But getting to it from SQL requires building something that doesn't exist out of the box.
 
-This article walks through `CORTEX_API_COMPLETE` — a generic, reusable vectorized UDF that brings prompt caching, concurrent execution, and full token visibility into a plain SQL interface.
+This article walks through `LLM_API_COMPLETE` — a generic, reusable vectorized UDF that brings prompt caching, concurrent execution, and full token visibility into a plain SQL interface.
 
-## Introducing CORTEX_API_COMPLETE
+## Introducing LLM_API_COMPLETE
 
-`CORTEX_API_COMPLETE` is a [vectorized Python UDF](https://docs.snowflake.com/en/developer-guide/udf/python/udf-python-tabular-vectorized) that calls the Cortex REST API directly, providing prompt caching, concurrent execution, and full token usage visibility — all callable from plain SQL.
+`LLM_API_COMPLETE` is a [vectorized Python UDF](https://docs.snowflake.com/en/developer-guide/udf/python/udf-python-tabular-vectorized) that calls the Cortex REST API directly, providing prompt caching, concurrent execution, and full token usage visibility — all callable from plain SQL.
 
-![CORTEX_API_COMPLETE Architecture](cortex_api_complete_architecture.jpg)
+![LLM_API_COMPLETE Architecture](llm_api_complete_architecture.jpg)
 
 ### The Interface
 
 ```sql
-SELECT CORTEX_API_COMPLETE(
+SELECT LLM_API_COMPLETE(
     'claude-sonnet-4-5',          -- model
     'Extract entities from text.', -- system prompt (cached for Claude models)
     raw_text,                      -- per-row user prompt
@@ -283,7 +283,7 @@ This setup works reliably once configured, though the need for loopback egress a
 
 ## Real-World Usage: PII De-identification
 
-The function was born from a real need. In the [PII De-identification System](https://medium.com/snowflake/building-pii-de-identification-system-for-unstructured-data-in-snowflake-568175e96c7b), `CORTEX_API_COMPLETE` powers the entity extraction layer:
+The function was born from a real need. In the [PII De-identification System](https://medium.com/snowflake/building-pii-de-identification-system-for-unstructured-data-in-snowflake-568175e96c7b), `LLM_API_COMPLETE` powers the entity extraction layer:
 
 ```sql
 CREATE FUNCTION LLM_EXTRACT_ENTITIES_BATCH(raw_text VARCHAR)
@@ -298,7 +298,7 @@ SELECT
             OBJECT_CONSTRUCT('success', FALSE, 'entities', [], 'error', result:error)
     END
 FROM (
-    SELECT CORTEX_API_COMPLETE(
+    SELECT LLM_API_COMPLETE(
         'claude-sonnet-4-5',
         'Extract sensitive entities from the text.
          INFO_TYPES: PERSON_NAME, PHONE_NUMBER, EMAIL_ADDRESS, DRIVERS_LICENSE, CREDIT_CARD_NUMBER.
@@ -311,7 +311,7 @@ FROM (
 $$;
 ```
 
-The wrapper function presents a clean scalar interface. Snowflake automatically batches calls to `CORTEX_API_COMPLETE` when you use `LLM_EXTRACT_ENTITIES_BATCH` in a `SELECT` over a table:
+The wrapper function presents a clean scalar interface. Snowflake automatically batches calls to `LLM_API_COMPLETE` when you use `LLM_EXTRACT_ENTITIES_BATCH` in a `SELECT` over a table:
 
 ```sql
 SELECT
@@ -323,11 +323,11 @@ FROM customer_complaints;
 
 The analyst doesn't need to know about batching, caching, or async HTTP. They call a function. The cost savings happen transparently.
 
-At Google, I helped build a [similar system for BigQuery using Cloud DLP and Remote Functions](https://github.com/GoogleCloudPlatform/bigquery-dlp-remote-function). The architectural pattern is remarkably similar — a SQL function backed by an external service call with batching and caching. `CORTEX_API_COMPLETE` brings that pattern to Snowflake, replacing the dedicated DLP service with a general-purpose LLM that can adapt to any extraction or transformation task through prompt engineering alone.
+At Google, I helped build a [similar system for BigQuery using Cloud DLP and Remote Functions](https://github.com/GoogleCloudPlatform/bigquery-dlp-remote-function). The architectural pattern is remarkably similar — a SQL function backed by an external service call with batching and caching. `LLM_API_COMPLETE` brings that pattern to Snowflake, replacing the dedicated DLP service with a general-purpose LLM that can adapt to any extraction or transformation task through prompt engineering alone.
 
-## When to Use CORTEXAPICOMPLETE
+## When to Use LLMAPICOMPLETE
 
-`CORTEX_API_COMPLETE` is designed for workloads where LLM inference runs at table scale with a shared system prompt. It shines when:
+`LLM_API_COMPLETE` is designed for workloads where LLM inference runs at table scale with a shared system prompt. It shines when:
 
 - You're processing thousands of records with a repeated system prompt that benefits from caching  
 - Cost optimization on input tokens is a priority  
@@ -341,8 +341,8 @@ For ad-hoc exploration or small one-off queries, the infrastructure setup may no
 
 The full implementation is available on GitHub at [Snowflake-Labs/sfguide-customer-issue-deduplication-demo](https://github.com/Snowflake-Labs/sfguide-customer-issue-deduplication-demo). The repo includes:
 
-- `[cortex_api_complete.sql](https://github.com/Snowflake-Labs/sfguide-customer-issue-deduplication-demo/blob/main/cortex_api_complete.sql)` — The generic UDF with network rules, stored procedures, and the convenience task  
-- `[ai_deidentify_batch_vectorized.sql](https://github.com/Snowflake-Labs/sfguide-customer-issue-deduplication-demo/blob/main/ai_deidentify_batch_vectorized.sql)` — The PII de-identification wrapper using `CORTEX_API_COMPLETE`
+- `[llm_api_complete.sql](https://github.com/Snowflake-Labs/sfguide-customer-issue-deduplication-demo/blob/main/llm_api_complete.sql)` — The generic UDF with network rules, stored procedures, and the convenience task  
+- `[ai_deidentify_batch_vectorized.sql](https://github.com/Snowflake-Labs/sfguide-customer-issue-deduplication-demo/blob/main/ai_deidentify_batch_vectorized.sql)` — The PII de-identification wrapper using `LLM_API_COMPLETE`
 
 Deploy the SQL files to your Snowflake environment, update the account identifier in the endpoint URL, configure the network rules and PAT, and you have a production-ready, cost-optimized LLM function callable from any SQL query.
 

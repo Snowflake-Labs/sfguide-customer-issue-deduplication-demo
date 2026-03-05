@@ -5,7 +5,7 @@
 -- ...
 
 -- ============================================================================
--- CORTEX_API_COMPLETE - Generic Vectorized UDF for Cortex REST API (Batched)
+-- LLM_API_COMPLETE - Generic Vectorized UDF for Cortex REST API (Batched)
 -- Features: Token reduction via Prompt Caching & Parallel requests
 -- ============================================================================
 
@@ -66,7 +66,7 @@ AS
 -- STEP 1: Create the UDF
 -- ============================================================================
 
-CREATE OR REPLACE FUNCTION CORTEX_API_COMPLETE(
+CREATE OR REPLACE FUNCTION LLM_API_COMPLETE(
     model_name VARCHAR,
     system_prompt VARCHAR,
     data_prompt VARCHAR,

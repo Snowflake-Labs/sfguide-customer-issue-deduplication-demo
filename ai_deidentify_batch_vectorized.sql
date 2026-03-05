@@ -13,13 +13,13 @@
 -- limitations under the License.
 
 -- ============================================================================
--- AI De-identification Batch Processing - Using CORTEX_API_COMPLETE
--- Requires: cortex_api_complete.sql to be executed first for the base UDF
+-- AI De-identification Batch Processing - Using LLM_API_COMPLETE
+-- Requires: llm_api_complete.sql to be executed first for the base UDF
 -- Requires: ai_deidentify.sql to be executed first for helper functions
 -- ============================================================================
 
 -- ============================================================================
--- STEP 1: LLM_EXTRACT_ENTITIES_BATCH - Wrapper using CORTEX_API_COMPLETE
+-- STEP 1: LLM_EXTRACT_ENTITIES_BATCH - Wrapper using LLM_API_COMPLETE
 -- ============================================================================
 
 CREATE OR REPLACE FUNCTION LLM_EXTRACT_ENTITIES_BATCH(raw_text VARCHAR)
@@ -42,7 +42,7 @@ SELECT
             )
     END
 FROM (
-    SELECT CORTEX_API_COMPLETE(
+    SELECT LLM_API_COMPLETE(
         'claude-sonnet-4-5',
         -- system prompt
         'Extract sensitive entities from the text.
