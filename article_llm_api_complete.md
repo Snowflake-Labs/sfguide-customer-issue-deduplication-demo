@@ -1,22 +1,22 @@
-# LLMAPICOMPLETE: Cost-Optimized LLM Inference at Scale in Snowflake
+LLM_API_COMPLETE: Optimized LLM Inference at Scale in Snowflake
 
-*How I built a vectorized UDF that unlocks Prompt Caching, Parallel Execution, and Token Visibility for Cortex LLM calls.*
+*How I built a vectorized UDF that brings Prompt Caching and Parallel Execution to Cortex LLM calls from SQL.*
 
 ---
 
-I've learned that the most expensive line of SQL is the one you run 10,000 times without realizing it.
+SQL is the interface for processing data at scale. Increasingly, that includes calling LLMs directly from a SELECT statement (for extraction, classification, summarization), but unlike traditional SQL functions, each LLM call carries a system prompt that stays identical across every row. The most wasteful part of an LLM call at scale isn't the data — it's resending the same instructions every time.
 
-While building my [PII De-identification System for Unstructured Data in Snowflake](https://medium.com/snowflake/building-pii-de-identification-system-for-unstructured-data-in-snowflake-568175e96c7b), I hit a wall. The system uses Claude Sonnet 4.5 to extract sensitive entities from free-form text — names, phone numbers, emails, driver's licenses — with a carefully crafted 1,100+ token system prompt that includes validation rules, few-shot examples, and structured output schemas. It works brilliantly on 10 records. At 10,000 records, the economics break down.
+I hit this firsthand while building my [PII De-identification System for Unstructured Data in Snowflake](https://medium.com/snowflake/building-pii-de-identification-system-for-unstructured-data-in-snowflake-568175e96c7b). The system uses Claude Sonnet 4.5 to extract sensitive entities from free-form text — names, phone numbers, emails, driver's licenses — with a carefully crafted 1,100+ token system prompt that includes validation rules, few-shot examples, and structured output schemas. It works well on 10 records. At 10,000 records, the redundancy becomes clear.
 
-Every row sends the same 1,100-token system prompt. That's 11 million system prompt tokens billed at full price. The actual per-row user text might be 50 tokens. You're paying 20x more for the instructions than the data.
+Every row sends the same 1,100-token system prompt. That's 11 million tokens of repeated instructions. The actual per-row user text might be 50 tokens. The instructions-to-data ratio is 20:1 — an inefficiency that prompt caching was designed to address.
 
-The Cortex REST API offers a feature called **Prompt Caching** that can reduce cached token costs by up to 90%. But getting to it from SQL requires building something that doesn't exist out of the box.
+The Cortex REST API supports model-provider features like **Prompt Caching**, which can reduce redundant token processing by up to 90%. However, accessing these features from SQL requires building something that doesn't exist out of the box.
 
 This article walks through `LLM_API_COMPLETE` — a generic, reusable vectorized UDF that brings prompt caching, concurrent execution, and full token visibility into a plain SQL interface.
 
 ## Introducing LLM_API_COMPLETE
 
-`LLM_API_COMPLETE` is a [vectorized Python UDF](https://docs.snowflake.com/en/developer-guide/udf/python/udf-python-tabular-vectorized) that calls the Cortex REST API directly, providing prompt caching, concurrent execution, and full token usage visibility — all callable from plain SQL.
+`LLM_API_COMPLETE` is a [vectorized Python UDF](https://docs.snowflake.com/en/developer-guide/udf/python/udf-python-tabular-vectorized) that calls the Cortex REST API directly. By leveraging the API's access to model-provider features like prompt caching, combined with concurrent execution within the vectorized UDF, it delivers token efficiency, throughput, and per-row usage visibility — all callable from plain SQL.
 
 ![LLM_API_COMPLETE Architecture](llm_api_complete_architecture.jpg)
 
@@ -34,11 +34,13 @@ FROM my_table;
 
 It looks like a regular SQL function call. Snowflake handles the batching automatically — the vectorized UDF receives up to 20 rows per batch, fires concurrent async HTTP requests for all of them, and returns structured results with token usage metadata.
 
-## Prompt Caching and the Cortex REST API
+## Prompt Caching: A Model-Provider Feature via the REST API
 
-The [Cortex REST API](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-llm-rest-api) exposes the full power of the underlying model providers. The feature that changes the economics most dramatically is **Prompt Caching**.
+The [Cortex REST API](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-llm-rest-api) provides access to additional features of the underlying model providers that aren't available through the built-in AI SQL functions. A key feature is **Prompt Caching**.
 
 ### How Prompt Caching Works
+
+The Cortex REST API supports the model providers' prompt caching mechanisms. The implementation details vary by provider.
 
 For Anthropic models (Claude 3.7 Sonnet and later), you mark portions of your message with `cache_control: {"type": "ephemeral"}`. The first request writes to the cache; subsequent requests with the same prefix read from it.
 
@@ -55,17 +57,17 @@ For Anthropic models (Claude 3.7 Sonnet and later), you mark portions of your me
 }
 ```
 
-The pricing difference is significant:
+For Anthropic models, the cache-related token rates are:
 
 - **Cache write**: 1.25x the normal input price (one-time cost)  
 - **Cache read**: 0.1x the normal input price (every subsequent request)  
 - **Minimum threshold**: 1024+ tokens to activate caching
 
-For a batch of 1,000 records with a shared system prompt: without caching, the full system prompt is billed on every single row. With prompt caching, you pay 1.25x once for the write, then 0.1x for the remaining 999 reads. That's roughly a **90% reduction** on system prompt token costs.
+For a batch of 1,000 records with a shared system prompt: without caching, the full system prompt is processed on every single row. With prompt caching, the write costs 1.25x once, then reads cost 0.1x for the remaining 999 requests. That's roughly a **90% reduction** in redundant system prompt token processing.
 
-### The Cost Picture
+### Token Efficiency at Scale
 
-The savings from prompt caching scale with the size of the system prompt and the number of rows processed. For Anthropic models, cache reads cost 0.1x the standard input token rate — a 90% reduction on the cached portion. For OpenAI models, prompt caching is implicit — no request modifications needed. Prompts with 1024+ tokens are automatically cached, and cache reads are discounted relative to the standard input price.
+The efficiency gains from prompt caching scale with the size of the system prompt and the number of rows processed. For Anthropic models, cache reads cost 0.1x the standard input token rate — a 90% reduction on the cached portion. For OpenAI models, prompt caching is implicit — no request modifications needed. Prompts with 1024+ tokens are automatically cached, and cache reads are discounted relative to the standard input price.
 
 Refer to the [Snowflake Credit Consumption Table](https://www.snowflake.com/legal-files/CreditConsumptionTable.pdf) for current per-model token rates.
 
@@ -159,7 +161,7 @@ def _build_system_message(model: str, sys_prompt: str) -> list:
         return [{"role": "system", "content": sys_prompt}]
 ```
 
-You pass a plain string as the system prompt. The UDF handles the `content_list` / `cache_control` formatting internally. For non-Claude models like OpenAI's GPT series, it uses the standard `content` format — and caching happens implicitly on the API side for prompts above 1024 tokens.
+You pass a plain string as the system prompt. The UDF handles the `content_list` / `cache_control` formatting internally. For non-Claude models like OpenAI's GPT series, it uses the standard `content` format — and OpenAI's own caching mechanism activates implicitly for prompts above 1024 tokens.
 
 ## Prompt Caching in Practice
 
@@ -167,14 +169,14 @@ An important nuance I discovered through testing: prompt caching activates **acr
 
 Here's why. The vectorized UDF sends all 20 rows in a batch concurrently. Since all requests fire simultaneously, they all independently write to the cache — the cache isn't populated yet when the concurrent requests launch.
 
-The caching benefit kicks in from the **second batch onward**. Snowflake processes a large table in sequential batches of 20 rows. The first batch writes the cache. The second batch — and every subsequent batch — reads from it at 0.1x cost.
+The caching benefit kicks in from the **second batch onward**. Snowflake processes a large table in sequential batches of 20 rows. The first batch writes the cache. The second batch — and every subsequent batch — reads from it at 0.1x the token rate.
 
 For a 1,000-row table:
 
 - **Batch 1** (rows 1–20): All 20 requests write to cache. Cost: 1.25x on the system prompt.  
 - **Batches 2–50** (rows 21–1,000): All 980 requests read from cache. Cost: 0.1x on the system prompt.
 
-Net result: 2% of requests pay 1.25x, 98% pay 0.1x. The overall system prompt cost drops to roughly **12% of the uncached price**.
+Net result: 2% of requests pay 1.25x, 98% pay 0.1x. The overall system prompt token overhead drops to roughly **12% of the uncached baseline**.
 
 Additionally, Anthropic's ephemeral cache has a 5 minute TTL. If you re-run the same query within that window, *every* request — including the first batch — hits cache reads.
 
@@ -185,7 +187,7 @@ Additionally, Anthropic's ephemeral cache has a 5 minute TTL. If you re-run the 
 
 | Capability             | Details                                                                               |
 | ---------------------- | ------------------------------------------------------------------------------------- |
-| Prompt Caching         | Automatic for Claude (via `cache_control`); implicit for OpenAI (1024+ token prompts) |
+| Prompt Caching (model-provider feature) | Automatic for Claude (via `cache_control`); implicit for OpenAI (1024+ token prompts) |
 | Parallel Execution     | Up to 20 concurrent requests per batch                                                |
 | Token Usage Visibility | Full usage dictionary per row — prompt, completion, cache write, cache read tokens    |
 | Error Diagnostics      | HTTP status code and error message on every failure                                   |
@@ -198,7 +200,7 @@ Additionally, Anthropic's ephemeral cache has a 5 minute TTL. If you re-run the 
 - **Infrastructure setup required.** The UDF needs network rules, a Programmatic Access Token (PAT), and an External Access Integration before it can call the Cortex REST API. This is a one-time setup, but it requires upfront infrastructure work.
 - **Ingress rules for network-policy-protected accounts.** Accounts with network policies restricting inbound traffic need additional ingress rules (detailed below).
 - **Egress IP maintenance.** Snowflake's egress IP ranges can change. A scheduled task automates this, but it's an operational concern to be aware of.
-- **First-batch cache write cost.** The first batch of each query pays the 1.25x cache write cost. The savings materialize from the second batch onward.
+- **First-batch cache write cost.** The first batch of each query pays the 1.25x cache write cost. The efficiency gains materialize from the second batch onward.
 
 ## The Setup: Network Rules and Security
 
@@ -321,16 +323,16 @@ SELECT
 FROM customer_complaints;
 ```
 
-The analyst doesn't need to know about batching, caching, or async HTTP. They call a function. The cost savings happen transparently.
+The analyst doesn't need to know about batching, caching, or async HTTP. They call a function. The efficiency gains happen transparently.
 
-At Google, I helped build a [similar system for BigQuery using Cloud DLP and Remote Functions](https://github.com/GoogleCloudPlatform/bigquery-dlp-remote-function). The architectural pattern is remarkably similar — a SQL function backed by an external service call with batching and caching. `LLM_API_COMPLETE` brings that pattern to Snowflake, replacing the dedicated DLP service with a general-purpose LLM that can adapt to any extraction or transformation task through prompt engineering alone.
+At Google, I helped build a [similar system for BigQuery using Cloud DLP and Remote Functions](https://github.com/GoogleCloudPlatform/bigquery-dlp-remote-function). The architectural pattern is similar — a SQL function backed by an external service call with batching and caching. `LLM_API_COMPLETE` brings that pattern to Snowflake, replacing the dedicated DLP service with a general-purpose LLM that can adapt to any extraction or transformation task through prompt engineering alone.
 
 ## When to Use LLMAPICOMPLETE
 
 `LLM_API_COMPLETE` is designed for workloads where LLM inference runs at table scale with a shared system prompt. It shines when:
 
 - You're processing thousands of records with a repeated system prompt that benefits from caching  
-- Cost optimization on input tokens is a priority  
+- Token efficiency on repeated input tokens is a priority  
 - You need per-row token usage visibility for cost monitoring and budgeting  
 - You need detailed error information for debugging production pipelines  
 - You're building reusable AI functions that will be called repeatedly across datasets
@@ -344,9 +346,9 @@ The full implementation is available on GitHub at [Snowflake-Labs/sfguide-custom
 - `[llm_api_complete.sql](https://github.com/Snowflake-Labs/sfguide-customer-issue-deduplication-demo/blob/main/llm_api_complete.sql)` — The generic UDF with network rules, stored procedures, and the convenience task  
 - `[ai_deidentify_batch_vectorized.sql](https://github.com/Snowflake-Labs/sfguide-customer-issue-deduplication-demo/blob/main/ai_deidentify_batch_vectorized.sql)` — The PII de-identification wrapper using `LLM_API_COMPLETE`
 
-Deploy the SQL files to your Snowflake environment, update the account identifier in the endpoint URL, configure the network rules and PAT, and you have a production-ready, cost-optimized LLM function callable from any SQL query.
+Deploy the SQL files to your Snowflake environment, update the account identifier in the endpoint URL, configure the network rules and PAT, and you have a reusable LLM function callable from any SQL query.
 
-The function is generic by design. Swap the model, change the system prompt, adjust the response format — it works for entity extraction, classification, summarization, translation, or any task where you're running the same LLM instruction across thousands of rows. The prompt caching ensures you only pay full price once.
+The function is generic by design. Swap the model, change the system prompt, adjust the response format — it works for entity extraction, classification, summarization, translation, or any task where you're running the same LLM instruction across thousands of rows. Prompt caching reduces redundant token processing for repeated system prompts.
 
 ---
 
